@@ -24,6 +24,9 @@ public:
     ServerLogic(QObject *parent = nullptr);
     void startServer(int port);
 
+public slots:
+    void shutdownServer();
+
 };
 
 #endif // SERVERLOGIC_H

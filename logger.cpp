@@ -2,8 +2,9 @@
 
 Logger* Logger::instance = nullptr;
 
-Logger::Logger() { setLogFile(QDir::homePath() + "/default_log.txt"); }
+Logger::Logger() { loadSettings(); }
 
+//Для получения указателя
 Logger* Logger::getInstance()
 {
     if (instance == nullptr)
@@ -13,6 +14,7 @@ Logger* Logger::getInstance()
     return instance;
 }
 
+//Запись в файл
 void Logger::logToFile(const QString &message)
 {
     if (logFile.isOpen())
@@ -26,6 +28,7 @@ void Logger::logToFile(const QString &message)
     }
 }
 
+//Выбор файла для записи
 void Logger::setLogFile(const QString &filename)
 {
     if (logFile.isOpen())
@@ -37,4 +40,26 @@ void Logger::setLogFile(const QString &filename)
     {
         qDebug() << "Failed to open log file:" << filename;
     }
+}
+
+//Загрузка настроек (хранят файл для логов по умолчанию)
+void Logger::loadSettings()
+{
+    QSettings settings(QDir::homePath() + "/appsettings.ini", QSettings::IniFormat);
+    QString defaultLogPath = settings.value("Logging/defaultLogPath", QDir::homePath() + "/default_log.txt").toString();
+    setLogFile(defaultLogPath);
+}
+
+//Сохранить стандартный путь к файлу логов
+void Logger::saveDefaultLogPath(const QString &path)
+{
+    QSettings settings(QDir::homePath() + "/appsettings.ini", QSettings::IniFormat);
+    settings.setValue("Logging/defaultLogPath", path);
+     settings.sync();
+}
+
+QString Logger::getDefaultLogPath()
+{
+    QSettings settings(QDir::homePath() + "/appsettings.ini", QSettings::IniFormat);
+    return settings.value("Logging/defaultLogPath", QDir::homePath() + "/default_log.txt").toString();
 }

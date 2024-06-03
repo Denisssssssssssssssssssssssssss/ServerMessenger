@@ -17,6 +17,9 @@ ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
 void ServerLogic::onNewConnection()
 {
     QTcpSocket *clientSocket = this->nextPendingConnection();
+    qintptr socketId = clientSocket->socketDescriptor();
+    QString logMessage = QString("New connection. Client socket descriptor: %1").arg(socketId);
+    Logger::getInstance()->logToFile(logMessage);
     connect(clientSocket, &QTcpSocket::readyRead, this, [this, clientSocket]()
     {
 
@@ -32,5 +35,28 @@ void ServerLogic::startServer(int port)
     else
     {
         qDebug() << "Server started on port" << port;
+    }
+}
+
+void ServerLogic::shutdownServer()
+{
+    this->close();
+    Logger::getInstance()->logToFile("Server is turned off");
+
+    //Отключение всех клиентов
+    foreach(QTcpSocket *socket, userSockets)
+    {
+        if (socket->state() == QTcpSocket::ConnectedState)
+        {
+            socket->disconnectFromHost();
+        }
+        socket->deleteLater();
+    }
+    userSockets.clear();
+
+    //Закрыть соединение с базой данных, если открыто
+    if (database.isOpen())
+    {
+        database.close();
     }
 }

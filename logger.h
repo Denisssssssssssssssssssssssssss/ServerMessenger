@@ -7,6 +7,7 @@
 #include <QTextStream>
 #include <QDir>
 #include <QDateTime>
+#include <QSettings>
 
 class Logger
 {
@@ -19,6 +20,9 @@ public:
     static Logger* getInstance();
     void logToFile(const QString &message);
     void setLogFile(const QString &filename);
+    void loadSettings();
+    void saveDefaultLogPath(const QString &path);
+    QString getDefaultLogPath();
 };
 
 #endif // LOGGER_H

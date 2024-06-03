@@ -11,5 +11,7 @@ int main(int argc, char *argv[])
     server.startServer(port);
     ServerUI window;
     window.show();
+    //Чтобы после закрытия окно сервер гарантировано закончил работу
+    QObject::connect(&window, &ServerUI::serverCloseRequested, &server, &ServerLogic::shutdownServer);
     return a.exec();
 }
