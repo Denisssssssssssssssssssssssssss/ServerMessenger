@@ -1,6 +1,5 @@
 #include "serverlogic.h"
 
-
 ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
 {
     connect(this, &ServerLogic::newConnection, this, &ServerLogic::onNewConnection);
@@ -14,6 +13,7 @@ ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
     Logger::getInstance()->logToFile("Server is running");
 }
 
+//Обработка подключений и запросов от клиентов
 void ServerLogic::onNewConnection()
 {
     QTcpSocket *clientSocket = this->nextPendingConnection();
@@ -26,6 +26,7 @@ void ServerLogic::onNewConnection()
     });
 }
 
+//Запуск сервера на определенном порте
 void ServerLogic::startServer(int port)
 {
     if (!this->listen(QHostAddress::Any, port))
@@ -38,6 +39,7 @@ void ServerLogic::startServer(int port)
     }
 }
 
+//Выключение сервера
 void ServerLogic::shutdownServer()
 {
     this->close();
@@ -60,3 +62,5 @@ void ServerLogic::shutdownServer()
         database.close();
     }
 }
+
+
