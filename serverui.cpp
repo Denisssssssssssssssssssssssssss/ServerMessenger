@@ -17,6 +17,7 @@ ServerUI::ServerUI(QWidget *parent) : QMainWindow(parent)
 //Настройка пользовательского интерфейса
 void ServerUI::setupUI()
 {
+    setWindowIcon(QIcon(":/images/logo.png"));
     resize(window_width, window_height);
     QWidget *centralWidget = new QWidget(this); // Создаем центральный виджет
     layout = new QVBoxLayout(centralWidget); // Устанавливаем макет для центрального виджета
