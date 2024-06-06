@@ -17,6 +17,10 @@ private:
     QHash<int, QTcpSocket*> userSockets;
     QSqlDatabase database;
 
+    bool passwordContainsRequiredCharacters(const QString &password);
+    bool loginContainsOnlyAllowedCharacters(const QString &login);
+    bool loginAvailable(const QString& login);
+
 private slots:
     void onNewConnection();
 
