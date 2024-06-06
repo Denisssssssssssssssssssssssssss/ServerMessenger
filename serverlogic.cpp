@@ -46,7 +46,6 @@ void ServerLogic::onNewConnection() {
         if (json.contains("type") && json["type"].toString() == "register" &&
             json.contains("login") && json.contains("password"))
         {
-
             QString login = json["login"].toString();
             QString hashedPassword = json["password"].toString();
 
@@ -79,9 +78,59 @@ void ServerLogic::onNewConnection() {
                 clientSocket->write("{\"status\":\"error\",\"message\":\"Login validation failed\"}");
             }
         }
-        else
+        else if(json.contains("type") && json["type"].toString() == "register")
         {
             clientSocket->write("{\"status\":\"error\",\"message\":\"Missing required fields\"}");
+        }
+
+        if (json.contains("type") && json["type"].toString() == "login" &&
+            json.contains("login") && json.contains("password"))
+        {
+            QString login = json["login"].toString();
+            QString hashedPassword = json["password"].toString();
+
+            QSqlQuery query(database);
+            query.prepare("SELECT password FROM user_auth WHERE login = :login");
+            query.bindValue(":login", login);
+            query.exec();
+
+            if (query.next())
+            {
+                QString storedPassword = query.value(0).toString();
+                if(storedPassword == hashedPassword)
+                {
+                    // Пароли совпадают, успешный вход
+                    clientSocket->write("{\"status\":\"success\",\"message\":\"Logged in successfully\"}");
+                    Logger::getInstance()->logToFile(QString("User '%1' logged in successfully.").arg(login));
+                }
+                else
+                {
+                    // Пароли не совпадают
+                    clientSocket->write("{\"status\":\"error\",\"message\":\"Login failed. Incorrect password.\"}");
+                }
+            }
+            else if(json.contains("type") && json["type"].toString() == "login") //???
+            {
+                // Логин не найден в базе данных
+                clientSocket->write("{\"status\":\"error\",\"message\":\"Login failed. User not found.\"}");
+            }
+        }
+
+        if (json.contains("type") && json["type"].toString() == "check_nickname" && json.contains("login"))
+        {
+            QString login = json["login"].toString();
+            QSqlQuery query(database);
+            query.prepare("SELECT nickname FROM user_auth WHERE login = :login");
+            query.bindValue(":login", login);
+            if(query.exec() && query.next()) {
+                QString nickname = query.value(0).toString();
+                QJsonObject response;
+                response["nickname"] = nickname;
+                qDebug() << nickname << "\n";
+                // Отправить найденный никнейм обратно клиенту
+                clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+                clientSocket->flush();
+            }
         }
     });
 }
