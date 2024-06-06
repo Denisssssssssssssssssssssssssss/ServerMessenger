@@ -60,7 +60,7 @@ void ServerLogic::onNewConnection() {
                               "VALUES (:login, :password, :nickname)");
                 query.bindValue(":login", login);
                 query.bindValue(":password", hashedPassword); // Сохраняем полученный от клиента хеш пароля
-                query.bindValue(":nickname", login); // Используем логин в качестве никнейма
+                query.bindValue(":nickname", "New user"); // Используем логин в качестве никнейма
                 if (!query.exec())
                 {
                     // Ошибка при добавлении пользователя в БД
