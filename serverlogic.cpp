@@ -132,6 +132,37 @@ void ServerLogic::onNewConnection() {
                 clientSocket->flush();
             }
         }
+        else if (json.contains("type") && json["type"].toString() == "update_nickname" &&
+                 json.contains("login") && json.contains("nickname")) {
+            QString login = json["login"].toString();
+            QString nickname = json["nickname"].toString();
+
+            // Проверка никнейма на допустимость
+            if (!nickname.isEmpty() && nickname != "New user") {
+                QSqlQuery query(database);
+                query.prepare("UPDATE user_auth SET nickname = :nickname WHERE login = :login");
+                query.bindValue(":nickname", nickname);
+                query.bindValue(":login", login);
+                if (!query.exec()) {
+                    QJsonObject response;
+                    response["status"] = "error";
+                    response["message"] = "Не удалось обновить имя.";
+                    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+                } else {
+                    QJsonObject response;
+                    response["status"] = "success";
+                    QString logMessage = QString("User with login '%1' has changed their name to '%2'").arg(login, nickname);
+                    Logger::getInstance()->logToFile(logMessage);
+                    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+                }
+            } else {
+                QJsonObject response;
+                response["status"] = "error";
+                response["message"] = "Недопустимое имя.";
+                clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+            }
+            clientSocket->flush();
+        }
     });
 }
 
