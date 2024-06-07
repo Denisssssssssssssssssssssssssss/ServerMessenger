@@ -83,7 +83,7 @@ void ServerLogic::onNewConnection() {
             clientSocket->write("{\"status\":\"error\",\"message\":\"Missing required fields\"}");
         }
 
-        if (json.contains("type") && json["type"].toString() == "login" &&
+        else if (json.contains("type") && json["type"].toString() == "login" &&
             json.contains("login") && json.contains("password"))
         {
             QString login = json["login"].toString();
@@ -116,7 +116,7 @@ void ServerLogic::onNewConnection() {
             }
         }
 
-        if (json.contains("type") && json["type"].toString() == "check_nickname" && json.contains("login"))
+        else if (json.contains("type") && json["type"].toString() == "check_nickname" && json.contains("login"))
         {
             QString login = json["login"].toString();
             QSqlQuery query(database);
