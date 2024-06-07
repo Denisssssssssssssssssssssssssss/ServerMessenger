@@ -6,6 +6,7 @@
 #include <QJsonParseError>
 #include <QCryptographicHash>
 #include <QRegularExpression>
+#include <QJsonArray>
 
 
 ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
@@ -159,6 +160,29 @@ void ServerLogic::onNewConnection() {
                 QJsonObject response;
                 response["status"] = "error";
                 response["message"] = "Недопустимое имя.";
+                clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+            }
+            clientSocket->flush();
+        }
+        else if (json.contains("type") && json["type"].toString() == "find_users" && json.contains("searchText")) {
+            QString searchText = json["searchText"].toString();
+            QSqlQuery query(database);
+            query.prepare("SELECT * FROM user_auth WHERE nickname LIKE :nickname");
+            query.bindValue(":nickname", '%' + searchText + '%');
+            if (!query.exec()) {
+                QJsonObject response;
+                response["status"] = "error";
+                response["message"] = "Ошибка при поиске пользователей.";
+                clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+            } else {
+                QJsonArray usersArray;
+                while (query.next()) {
+                    QString nickname = query.value("nickname").toString();
+                    usersArray.append(QJsonValue(nickname));
+                }
+                QJsonObject response;
+                response["status"] = "success";
+                response["users"] = usersArray;
                 clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
             }
             clientSocket->flush();
