@@ -164,29 +164,33 @@ void ServerLogic::onNewConnection() {
             }
             clientSocket->flush();
         }
-        else if (json.contains("type") && json["type"].toString() == "find_users" && json.contains("searchText")) {
-            QString searchText = json["searchText"].toString();
-            QSqlQuery query(database);
-            query.prepare("SELECT * FROM user_auth WHERE nickname LIKE :nickname");
-            query.bindValue(":nickname", '%' + searchText + '%');
-            if (!query.exec()) {
-                QJsonObject response;
-                response["status"] = "error";
-                response["message"] = "Ошибка при поиске пользователей.";
-                clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
-            } else {
-                QJsonArray usersArray;
-                while (query.next()) {
-                    QString nickname = query.value("nickname").toString();
-                    usersArray.append(QJsonValue(nickname));
+        else if (json.contains("type") && json["type"].toString() == "find_users" && json.contains("searchText") && json.contains("login")) {
+                QString searchText = json["searchText"].toString();
+                QString userLogin = json["login"].toString(); // Получаем логин пользователя, отправившего запрос
+                QSqlQuery query(database);
+                // Измените SQL запрос, добавив условие для исключения логина пользователя из результатов
+                query.prepare("SELECT * FROM user_auth WHERE nickname LIKE :nickname AND login != :login");
+                query.bindValue(":nickname", '%' + searchText + '%');
+                query.bindValue(":login", userLogin); // Исключаем пользователя из результатов
+                if (!query.exec()) {
+                    QJsonObject response;
+                    response["status"] = "error";
+                    response["message"] = "Ошибка при поиске пользователей.";
+                    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+                } else {
+                    QJsonArray usersArray;
+                    while (query.next()) {
+                        QString nickname = query.value("nickname").toString();
+                        usersArray.append(QJsonValue(nickname));
+                    }
+                    QJsonObject response;
+                    response["status"] = "success";
+                    response["users"] = usersArray;
+                    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
                 }
-                QJsonObject response;
-                response["status"] = "success";
-                response["users"] = usersArray;
-                clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+                clientSocket->flush();
             }
-            clientSocket->flush();
-        }
+
     });
 }
 
