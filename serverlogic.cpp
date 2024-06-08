@@ -126,6 +126,8 @@ void ServerLogic::onNewConnection() {
             if(query.exec() && query.next()) {
                 QString nickname = query.value(0).toString();
                 QJsonObject response;
+                response["type"] = "check_nickname";
+                response["status"] = "success";
                 response["nickname"] = nickname;
                 qDebug() << nickname << "\n";
                 // Отправить найденный никнейм обратно клиенту
@@ -146,18 +148,22 @@ void ServerLogic::onNewConnection() {
                 query.bindValue(":login", login);
                 if (!query.exec()) {
                     QJsonObject response;
+                    response["type"] = "update_nickname";
                     response["status"] = "error";
                     response["message"] = "Не удалось обновить имя.";
                     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
                 } else {
                     QJsonObject response;
+                    response["type"] = "update_nickname";
                     response["status"] = "success";
+                    response["message"] = "Nickname has been changed.";
                     QString logMessage = QString("User with login '%1' has changed their name to '%2'").arg(login, nickname);
                     Logger::getInstance()->logToFile(logMessage);
                     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
                 }
             } else {
                 QJsonObject response;
+                response["type"] = "update_nickname";
                 response["status"] = "error";
                 response["message"] = "Недопустимое имя.";
                 clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
@@ -197,23 +203,25 @@ void ServerLogic::onNewConnection() {
             QString newLogin = json["new_login"].toString();
 
             // Некоторая валидация нового логина
-            if (!loginContainsOnlyAllowedCharacters(newLogin) || !loginAvailable(newLogin)) {
-                clientSocket->write("{\"status\":\"error\",\"message\":\"Invalid or duplicate login.\"}");
-            } else {
+            if (loginAvailable(newLogin) && loginContainsOnlyAllowedCharacters(newLogin))
+            {
                 QSqlQuery query(database);
                 query.prepare("UPDATE user_auth SET login = :newLogin WHERE login = :oldLogin");
                 query.bindValue(":newLogin", newLogin);
                 query.bindValue(":oldLogin", oldLogin);
 
                 if (!query.exec()) {
-                    clientSocket->write("{\"status\":\"error\",\"message\":\"Could not update login in the database.\"}");
+                    clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Could not update login in the database.\"}");
                 } else {
-                    clientSocket->write("{\"status\":\"success\",\"message\":\"Login updated successfully.\"}");
+                    clientSocket->write("{\"type\":\"update_login\", \"status\":\"success\",\"message\":\"Login updated successfully.\"}");
                 }
+            }
+            else
+            {
+                clientSocket->write("{\"status\":\"error\",\"message\":\"Invalid or duplicate login.\"}");
             }
             clientSocket->flush();
         }
-
 
     });
 }
