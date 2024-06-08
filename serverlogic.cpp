@@ -189,7 +189,31 @@ void ServerLogic::onNewConnection() {
                     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
                 }
                 clientSocket->flush();
+        }
+        else if (json.contains("type") && json["type"].toString() == "update_login" &&
+                 json.contains("old_login") && json.contains("new_login"))
+        {
+            QString oldLogin = json["old_login"].toString();
+            QString newLogin = json["new_login"].toString();
+
+            // Некоторая валидация нового логина
+            if (!loginContainsOnlyAllowedCharacters(newLogin) || !loginAvailable(newLogin)) {
+                clientSocket->write("{\"status\":\"error\",\"message\":\"Invalid or duplicate login.\"}");
+            } else {
+                QSqlQuery query(database);
+                query.prepare("UPDATE user_auth SET login = :newLogin WHERE login = :oldLogin");
+                query.bindValue(":newLogin", newLogin);
+                query.bindValue(":oldLogin", oldLogin);
+
+                if (!query.exec()) {
+                    clientSocket->write("{\"status\":\"error\",\"message\":\"Could not update login in the database.\"}");
+                } else {
+                    clientSocket->write("{\"status\":\"success\",\"message\":\"Login updated successfully.\"}");
+                }
             }
+            clientSocket->flush();
+        }
+
 
     });
 }
