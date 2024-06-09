@@ -43,6 +43,8 @@ void ServerLogic::onNewConnection() {
         }
 
         QJsonObject json = document.object();
+        qDebug() << "Received JSON:" << json;
+
         // Обработка запроса на регистрацию
         if (json.contains("type") && json["type"].toString() == "register" &&
             json.contains("login") && json.contains("password"))
@@ -131,6 +133,7 @@ void ServerLogic::onNewConnection() {
                 response["nickname"] = nickname;
                 qDebug() << nickname << "\n";
                 // Отправить найденный никнейм обратно клиенту
+                qDebug() << QJsonDocument(response).toJson(QJsonDocument::Compact);
                 clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
                 clientSocket->flush();
             }
@@ -218,7 +221,7 @@ void ServerLogic::onNewConnection() {
             }
             else
             {
-                clientSocket->write("{\"status\":\"error\",\"message\":\"Invalid or duplicate login.\"}");
+                clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Invalid or duplicate login.\"}");
             }
             clientSocket->flush();
         }
