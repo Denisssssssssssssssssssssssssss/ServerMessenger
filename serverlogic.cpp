@@ -256,11 +256,14 @@ void ServerLogic::onNewConnection()
             }
             clientSocket->flush();
         }
-        if (json.contains("type") && json["type"].toString() == "create_chat" && json.contains("user1") && json.contains("user2"))
+        else if (json.contains("type") && json["type"].toString() == "create_chat" && json.contains("user1") && json.contains("user2"))
         {
             handleCreateChat(clientSocket, json);
         }
-
+        else if (json.contains("type") && json["type"].toString() == "get_chat_list" && json.contains("login"))
+        {
+            handleGetChatList(clientSocket, json);
+        }
 
     });
 }
@@ -447,3 +450,47 @@ void ServerLogic::handleCreateChat(QTcpSocket* clientSocket, const QJsonObject &
     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
     clientSocket->flush();
 }
+
+void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject &json)
+{
+    QString login = json["login"].toString();
+
+    QSqlQuery query(database);
+    query.prepare(
+        "SELECT c.chat_name, u2.nickname AS other_nickname "
+        "FROM chats c "
+        "JOIN chat_participants cp1 ON c.chat_id = cp1.chat_id "
+        "JOIN user_auth u1 ON cp1.user_id = u1.user_id "
+        "JOIN chat_participants cp2 ON c.chat_id = cp2.chat_id AND cp2.user_id != cp1.user_id "
+        "JOIN user_auth u2 ON cp2.user_id = u2.user_id "
+        "WHERE u1.login = :login AND c.chat_type = 'personal'"
+        );
+    query.bindValue(":login", login);
+
+    if (!query.exec()) {
+        qDebug() << "Ошибка выполнения SQL запроса: " << query.lastError();
+        QJsonObject response;
+        response["status"] = "error";
+        response["message"] = "Ошибка при получении списка чатов.";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    QJsonArray chatsArray;
+    while (query.next()) {
+        QString chatName = query.value("chat_name").toString();
+        QString otherNickname = query.value("other_nickname").toString();
+        QJsonObject chatObj;
+        chatObj["chat_name"] = chatName;
+        chatObj["other_nickname"] = otherNickname;
+        chatsArray.append(chatObj);
+    }
+
+    QJsonObject response;
+    response["status"] = "success";
+    response["chats"] = chatsArray;
+    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+    clientSocket->flush();
+}
+

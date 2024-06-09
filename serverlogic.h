@@ -21,6 +21,7 @@ private:
     bool loginContainsOnlyAllowedCharacters(const QString &login);
     bool loginAvailable(const QString& login);
     QString getSha256Hash(const QString &str, const QString &salt);
+    void handleGetChatList(QTcpSocket* clientSocket, const QJsonObject &json);
 
 private slots:
     void onNewConnection();
