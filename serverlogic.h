@@ -20,6 +20,7 @@ private:
     bool passwordContainsRequiredCharacters(const QString &password);
     bool loginContainsOnlyAllowedCharacters(const QString &login);
     bool loginAvailable(const QString& login);
+    QString getSha256Hash(const QString &str, const QString &salt);
 
 private slots:
     void onNewConnection();

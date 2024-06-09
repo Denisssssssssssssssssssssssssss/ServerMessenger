@@ -7,6 +7,7 @@
 #include <QCryptographicHash>
 #include <QRegularExpression>
 #include <QJsonArray>
+#include <QCryptographicHash>
 
 
 ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
@@ -199,7 +200,7 @@ void ServerLogic::onNewConnection() {
                 }
                 clientSocket->flush();
         }
-        else if (json.contains("type") && json["type"].toString() == "update_login" &&
+        /*else if (json.contains("type") && json["type"].toString() == "update_login" &&
                  json.contains("old_login") && json.contains("new_login"))
         {
             QString oldLogin = json["old_login"].toString();
@@ -222,6 +223,52 @@ void ServerLogic::onNewConnection() {
             else
             {
                 clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Invalid or duplicate login.\"}");
+            }
+            clientSocket->flush();
+        }*/
+        else if (json.contains("type") && json["type"].toString() == "update_login" &&
+                 json.contains("old_login") && json.contains("new_login") && json.contains("password"))
+        {
+            QString oldLogin = json["old_login"].toString();
+            QString newLogin = json["new_login"].toString();
+            QString clientPassword = json["password"].toString();
+
+            // Проверка допустимости логина и нового логина
+            if (!loginAvailable(newLogin) || !loginContainsOnlyAllowedCharacters(newLogin)) {
+                clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Invalid or duplicate new login.\"}");
+                clientSocket->flush();
+                return;
+            }
+
+            QSqlQuery query(database);
+
+            // Проверяем существование старого логина и его пароля
+            query.prepare("SELECT password FROM user_auth WHERE login = :oldLogin");
+            query.bindValue(":oldLogin", oldLogin);
+            if (query.exec() && query.next()) {
+                QString dbHashedPassword = query.value(0).toString();
+
+                // Если пароли совпадают
+                if (getSha256Hash(clientPassword, oldLogin) == dbHashedPassword) {
+                    // Зашифровываем пароль с использованием нового логина как соли
+                    QString newHashedPassword = getSha256Hash(clientPassword, newLogin); // Функция getSha256Hash() должна быть реализована вами
+
+                    // Обновляем данные пользователя в БД
+                    query.prepare("UPDATE user_auth SET login = :newLogin, password = :newHashedPassword WHERE login = :oldLogin");
+                    query.bindValue(":newLogin", newLogin);
+                    query.bindValue(":newHashedPassword", newHashedPassword);
+                    query.bindValue(":oldLogin", oldLogin);
+
+                    if (query.exec()) {
+                        clientSocket->write("{\"type\":\"update_login\", \"status\":\"success\",\"message\":\"Login and password updated successfully.\"}");
+                    } else {
+                        clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Could not update login and password in the database.\"}");
+                    }
+                } else {
+                    clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Incorrect old password.\"}");
+                }
+            } else {
+                clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Old login not found.\"}");
             }
             clientSocket->flush();
         }
@@ -298,4 +345,10 @@ bool ServerLogic::loginAvailable(const QString& login)
         return true; //Логин свободен
     }
     return false; //логин занят
+}
+
+QString ServerLogic::getSha256Hash(const QString &str, const QString &salt) {
+    QByteArray byteArrayPasswordSalt = (str + salt).toUtf8();
+    QByteArray hashedPassword = QCryptographicHash::hash(byteArrayPasswordSalt, QCryptographicHash::Sha256).toHex();
+    return hashedPassword;
 }
