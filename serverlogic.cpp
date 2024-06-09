@@ -176,30 +176,7 @@ void ServerLogic::onNewConnection()
             clientSocket->flush();
         }
         else if (json.contains("type") && json["type"].toString() == "find_users" && json.contains("searchText") && json.contains("login")) {
-                QString searchText = json["searchText"].toString();
-                QString userLogin = json["login"].toString(); // Получаем логин пользователя, отправившего запрос
-                QSqlQuery query(database);
-                // Измените SQL запрос, добавив условие для исключения логина пользователя из результатов
-                query.prepare("SELECT * FROM user_auth WHERE nickname LIKE :nickname AND login != :login");
-                query.bindValue(":nickname", '%' + searchText + '%');
-                query.bindValue(":login", userLogin); // Исключаем пользователя из результатов
-                if (!query.exec()) {
-                    QJsonObject response;
-                    response["status"] = "error";
-                    response["message"] = "Ошибка при поиске пользователей.";
-                    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
-                } else {
-                    QJsonArray usersArray;
-                    while (query.next()) {
-                        QString nickname = query.value("nickname").toString();
-                        usersArray.append(QJsonValue(nickname));
-                    }
-                    QJsonObject response;
-                    response["status"] = "success";
-                    response["users"] = usersArray;
-                    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
-                }
-                clientSocket->flush();
+                handleFindUsers(clientSocket, json);
         }
         else if (json.contains("type") && json["type"].toString() == "update_login" &&
                  json.contains("old_login") && json.contains("new_login") && json.contains("password"))
@@ -279,6 +256,11 @@ void ServerLogic::onNewConnection()
             }
             clientSocket->flush();
         }
+        if (json.contains("type") && json["type"].toString() == "create_chat" && json.contains("user1") && json.contains("user2"))
+        {
+            handleCreateChat(clientSocket, json);
+        }
+
 
     });
 }
@@ -358,4 +340,110 @@ QString ServerLogic::getSha256Hash(const QString &str, const QString &salt) {
     QByteArray byteArrayPasswordSalt = (str + salt).toUtf8();
     QByteArray hashedPassword = QCryptographicHash::hash(byteArrayPasswordSalt, QCryptographicHash::Sha256).toHex();
     return hashedPassword;
+}
+
+void ServerLogic::handleFindUsers(QTcpSocket* clientSocket, const QJsonObject &json)
+{
+    QString searchText = json["searchText"].toString();
+    QString userLogin = json["login"].toString();
+
+    QSqlQuery query(database);
+    query.prepare("SELECT login, nickname FROM user_auth WHERE nickname LIKE :nickname AND login != :login");
+    query.bindValue(":nickname", '%' + searchText + '%');
+    query.bindValue(":login", userLogin); // Исключаем пользователя из результатов
+    if (!query.exec()) {
+        QJsonObject response;
+        response["status"] = "error";
+        response["message"] = "Ошибка при поиске пользователей.";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+    } else {
+        QJsonArray usersArray;
+        while (query.next()) {
+            QString nickname = query.value("nickname").toString();
+            QString login = query.value("login").toString();
+            QJsonObject userObj;
+            userObj["nickname"] = nickname;
+            userObj["login"] = login;
+            usersArray.append(userObj);
+        }
+        QJsonObject response;
+        response["status"] = "success";
+        response["users"] = usersArray;
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+    }
+    clientSocket->flush();
+}
+
+void ServerLogic::handleCreateChat(QTcpSocket* clientSocket, const QJsonObject &json)
+{
+    QString user1 = json["user1"].toString();
+    QString user2 = json["user2"].toString();
+    QString chatName = user1 + user2;
+
+    QSqlQuery query(database);
+
+    // Проверяем, существует ли уже такой чат
+    query.prepare("SELECT chat_id FROM chats WHERE chat_name = :chatName");
+    query.bindValue(":chatName", chatName);
+    if (query.exec() && query.next()) {
+        // Чат уже существует, возвращаем ID чата
+        int chatId = query.value("chat_id").toInt();
+        QJsonObject response;
+        response["type"] = "create_chat";
+        response["status"] = "success";
+        response["chat_id"] = chatId;
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    // Вставляем новый чат в таблицу chats
+    query.prepare("INSERT INTO chats (chat_name, chat_type) VALUES (:chatName, 'personal')");
+    query.bindValue(":chatName", chatName);
+    if (!query.exec()) {
+        QJsonObject response;
+        response["type"] = "create_chat";
+        response["status"] = "error";
+        response["message"] = "Failed to create chat.";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    // Получаем ID нового чата
+    int chatId = query.lastInsertId().toInt();
+
+    // Вставляем участников в таблицу chat_participants
+    query.prepare("INSERT INTO chat_participants (chat_id, user_id) "
+                  "SELECT :chatId, user_id FROM user_auth WHERE login = :userLogin");
+    query.bindValue(":chatId", chatId);
+    query.bindValue(":userLogin", user1);
+    if (!query.exec()) {
+        QJsonObject response;
+        response["type"] = "create_chat";
+        response["status"] = "error";
+        response["message"] = "Failed to add user1 to chat.";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+    query.bindValue(":chatId", chatId);
+    query.bindValue(":userLogin", user2);
+    if (!query.exec()) {
+        QJsonObject response;
+        response["type"] = "create_chat";
+        response["status"] = "error";
+        response["message"] = "Failed to add user2 to chat.";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    // Возвращаем успешный ответ
+    QJsonObject response;
+    response["type"] = "create_chat";
+    response["status"] = "success";
+    response["chat_id"] = chatId;
+    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+    clientSocket->flush();
 }

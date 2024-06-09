@@ -24,6 +24,8 @@ private:
 
 private slots:
     void onNewConnection();
+    void handleCreateChat(QTcpSocket* clientSocket, const QJsonObject &json);
+    void handleFindUsers(QTcpSocket* clientSocket, const QJsonObject &json);
 
 public:
     ServerLogic(QObject *parent = nullptr);
