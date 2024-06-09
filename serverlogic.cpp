@@ -24,7 +24,8 @@ ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
 }
 
 //Обработка подключений и запросов от клиентов
-void ServerLogic::onNewConnection() {
+void ServerLogic::onNewConnection()
+{
     QTcpSocket *clientSocket = this->nextPendingConnection();
     qintptr socketId = clientSocket->socketDescriptor();
     QString logMessage = QString("New connection. Client socket descriptor: %1").arg(socketId);
@@ -200,32 +201,6 @@ void ServerLogic::onNewConnection() {
                 }
                 clientSocket->flush();
         }
-        /*else if (json.contains("type") && json["type"].toString() == "update_login" &&
-                 json.contains("old_login") && json.contains("new_login"))
-        {
-            QString oldLogin = json["old_login"].toString();
-            QString newLogin = json["new_login"].toString();
-
-            // Некоторая валидация нового логина
-            if (loginAvailable(newLogin) && loginContainsOnlyAllowedCharacters(newLogin))
-            {
-                QSqlQuery query(database);
-                query.prepare("UPDATE user_auth SET login = :newLogin WHERE login = :oldLogin");
-                query.bindValue(":newLogin", newLogin);
-                query.bindValue(":oldLogin", oldLogin);
-
-                if (!query.exec()) {
-                    clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Could not update login in the database.\"}");
-                } else {
-                    clientSocket->write("{\"type\":\"update_login\", \"status\":\"success\",\"message\":\"Login updated successfully.\"}");
-                }
-            }
-            else
-            {
-                clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Invalid or duplicate login.\"}");
-            }
-            clientSocket->flush();
-        }*/
         else if (json.contains("type") && json["type"].toString() == "update_login" &&
                  json.contains("old_login") && json.contains("new_login") && json.contains("password"))
         {
@@ -269,6 +244,38 @@ void ServerLogic::onNewConnection() {
                 }
             } else {
                 clientSocket->write("{\"type\":\"update_login\", \"status\":\"error\",\"message\":\"Old login not found.\"}");
+            }
+            clientSocket->flush();
+        }
+        else if (json.contains("type") && json["type"].toString() == "update_password" &&
+                 json.contains("login") && json.contains("current_password") && json.contains("new_password"))
+        {
+            QString login = json["login"].toString();
+            QString currentPassword = json["current_password"].toString(); // предполагается, что пароль хэшируется на клиенте
+            QString newPassword = json["new_password"].toString(); // предполагается, что пароль хэшируется на клиенте
+
+            QSqlQuery query(database);
+            query.prepare("SELECT password FROM user_auth WHERE login = :login");
+            query.bindValue(":login", login);
+            if (query.exec() && query.next()) {
+                QString storedPassword = query.value(0).toString();
+
+                if (storedPassword == currentPassword) {
+
+                    query.prepare("UPDATE user_auth SET password = :newPassword WHERE login = :login");
+                    query.bindValue(":newPassword", newPassword);
+                    query.bindValue(":login", login);
+
+                    if (query.exec()) {
+                        clientSocket->write("{\"type\":\"update_password\", \"status\":\"success\",\"message\":\"Password updated successfully.\"}");
+                    } else {
+                        clientSocket->write("{\"type\":\"update_password\", \"status\":\"error\",\"message\":\"Could not update password.\"}");
+                    }
+                } else {
+                    clientSocket->write("{\"type\":\"update_password\", \"status\":\"error\",\"message\":\"Incorrect current password.\"}");
+                }
+            } else {
+                clientSocket->write("{\"type\":\"update_password\", \"status\":\"error\",\"message\":\"Login not found.\"}");
             }
             clientSocket->flush();
         }
