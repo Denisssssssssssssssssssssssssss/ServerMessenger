@@ -511,13 +511,15 @@ void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject 
     QString chatId = json["chat_id"].toString();
     QString userId = json["user_id"].toString();
     QString messageText = json["message_text"].toString();
+    QString timestamp = json["timestamp"].toString(); // Получаем временную метку
 
     QSqlQuery query(database);
-    query.prepare("INSERT INTO messages (chat_id, user_id, message_text) "
-                  "VALUES (:chatId, (SELECT user_id FROM user_auth WHERE login = :userId), :messageText)");
+    query.prepare("INSERT INTO messages (chat_id, user_id, message_text, timestamp_sent) "
+                  "VALUES (:chatId, (SELECT user_id FROM user_auth WHERE login = :userId), :messageText, :timestamp)");
     query.bindValue(":chatId", chatId);
     query.bindValue(":userId", userId);
     query.bindValue(":messageText", messageText);
+    query.bindValue(":timestamp", timestamp); // Привязываем временную метку
 
     if (!query.exec()) {
         qDebug() << "Ошибка добавления сообщения: " << query.lastError();
@@ -530,6 +532,7 @@ void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject 
     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
     clientSocket->flush();
 }
+
 
 void ServerLogic::handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObject &json)
 {
