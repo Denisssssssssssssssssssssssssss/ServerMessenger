@@ -264,6 +264,18 @@ void ServerLogic::onNewConnection()
         {
             handleGetChatList(clientSocket, json);
         }
+        else if (json.contains("type")&& json["type"].toString() == "get_chat_history" && json.contains("chat_id"))
+        {
+            handleGetChatHistory(clientSocket, json);
+        }
+        else if (json.contains("type")&& json["type"].toString() == "send_message" && json.contains("chat_id") && json.contains("user_id") && json.contains("message_text"))
+        {
+            handleSendMessage(clientSocket, json);
+        }
+        else if (json.contains("type")&& json["type"].toString() == "get_or_create_chat")
+        {
+            handleGetOrCreateChat(clientSocket, json);
+        }
 
     });
 }
@@ -494,3 +506,142 @@ void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject 
     clientSocket->flush();
 }
 
+void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject &json)
+{
+    QString chatId = json["chat_id"].toString();
+    QString userId = json["user_id"].toString();
+    QString messageText = json["message_text"].toString();
+
+    QSqlQuery query(database);
+    query.prepare("INSERT INTO messages (chat_id, user_id, message_text) "
+                  "VALUES (:chatId, (SELECT user_id FROM user_auth WHERE login = :userId), :messageText)");
+    query.bindValue(":chatId", chatId);
+    query.bindValue(":userId", userId);
+    query.bindValue(":messageText", messageText);
+
+    if (!query.exec()) {
+        qDebug() << "Ошибка добавления сообщения: " << query.lastError();
+    }
+
+    QJsonObject response;
+    response["type"] = "send_message";
+    response["status"] = "success";
+
+    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+    clientSocket->flush();
+}
+
+void ServerLogic::handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObject &json)
+{
+    QString chatId = json["chat_id"].toString();
+
+    QSqlQuery query(database);
+    query.prepare("SELECT ua.login AS user_id, m.message_text, m.timestamp_sent AS timestamp "
+                  "FROM messages m "
+                  "JOIN user_auth ua ON m.user_id = ua.user_id "
+                  "WHERE m.chat_id = :chatId "
+                  "ORDER BY m.timestamp_sent");
+    query.bindValue(":chatId", chatId);
+
+    if (!query.exec()) {
+        qDebug() << "Ошибка получения истории сообщений: " << query.lastError();
+        return;
+    }
+
+    QJsonArray messagesArray;
+    while (query.next()) {
+        QString userId = query.value("user_id").toString();
+        QString messageText = query.value("message_text").toString();
+        QString timestamp = query.value("timestamp").toString();
+
+        QJsonObject messageObj;
+        messageObj["user_id"] = userId;
+        messageObj["message_text"] = messageText;
+        messageObj["timestamp"] = timestamp;
+
+        messagesArray.append(messageObj);
+    }
+
+    QJsonObject response;
+    response["type"] = "get_chat_history";
+    response["messages"] = messagesArray;
+    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+    clientSocket->flush();
+}
+
+void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObject &json)
+{
+    QString login1 = json["login1"].toString();
+    QString login2 = json["login2"].toString();
+    QString chatName1 = login1 + login2;
+    QString chatName2 = login2 + login1;
+    QSqlQuery query(database);
+
+    // Проверяем, существует ли уже такой чат
+    query.prepare("SELECT chat_id FROM chats WHERE chat_name = :chatName1 OR chat_name = :chatName2");
+    query.bindValue(":chatName1", chatName1);
+    query.bindValue(":chatName2", chatName2);
+
+    if (query.exec() && query.next()) {
+        int chatId = query.value("chat_id").toInt();
+        QJsonObject response;
+        response["type"] = "get_or_create_chat";
+        response["status"] = "success";
+        response["chat_id"] = chatId;
+        response["user"] = login2; // Никнейм второго пользователя
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    // Вставляем новый чат в таблицу chats
+    query.prepare("INSERT INTO chats (chat_name, chat_type) VALUES (:chatName1, 'personal')");
+    query.bindValue(":chatName1", chatName1);
+    if (!query.exec()) {
+        QJsonObject response;
+        response["type"] = "get_or_create_chat";
+        response["status"] = "error";
+        response["message"] = "Failed to create chat.";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    // Получаем ID нового чата
+    int chatId = query.lastInsertId().toInt();
+
+    // Вставляем участников в таблицу chat_participants
+    query.prepare("INSERT INTO chat_participants (chat_id, user_id) "
+                  "SELECT :chatId, user_id FROM user_auth WHERE login = :userLogin");
+    query.bindValue(":chatId", chatId);
+    query.bindValue(":userLogin", login1);
+    if (!query.exec()) {
+        QJsonObject response;
+        response["type"] = "get_or_create_chat";
+        response["status"] = "error";
+        response["message"] = "Failed to add user1 to chat.";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+    query.bindValue(":chatId", chatId);
+    query.bindValue(":userLogin", login2);
+    if (!query.exec()) {
+        QJsonObject response;
+        response["type"] = "get_or_create_chat";
+        response["status"] = "error";
+        response["message"] = "Failed to add user2 to chat.";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    // Возвращаем успешный ответ с chat_id
+    QJsonObject response;
+    response["type"] = "get_or_create_chat";
+    response["status"] = "success";
+    response["chat_id"] = chatId;
+    response["user"] = login2; // Никнейм второго пользователя
+    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+    clientSocket->flush();
+}

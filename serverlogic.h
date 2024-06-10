@@ -22,6 +22,9 @@ private:
     bool loginAvailable(const QString& login);
     QString getSha256Hash(const QString &str, const QString &salt);
     void handleGetChatList(QTcpSocket* clientSocket, const QJsonObject &json);
+    void handleSendMessage(QTcpSocket* clientSocket, const QJsonObject &json);
+    void handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObject &json);
+    void handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObject &json);
 
 private slots:
     void onNewConnection();
