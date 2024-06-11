@@ -469,7 +469,7 @@ void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject 
 
     QSqlQuery query(database);
     query.prepare(
-        "SELECT c.chat_name, u2.nickname AS other_nickname "
+        "SELECT c.chat_id, u2.nickname AS other_nickname "
         "FROM chats c "
         "JOIN chat_participants cp1 ON c.chat_id = cp1.chat_id "
         "JOIN user_auth u1 ON cp1.user_id = u1.user_id "
@@ -491,10 +491,10 @@ void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject 
 
     QJsonArray chatsArray;
     while (query.next()) {
-        QString chatName = query.value("chat_name").toString();
+        int chatId = query.value("chat_id").toInt();
         QString otherNickname = query.value("other_nickname").toString();
         QJsonObject chatObj;
-        chatObj["chat_name"] = chatName;
+        chatObj["chat_id"] = chatId;
         chatObj["other_nickname"] = otherNickname;
         chatsArray.append(chatObj);
     }
@@ -590,7 +590,8 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
         QJsonObject response;
         response["type"] = "get_or_create_chat";
         response["status"] = "success";
-        response["chat_id"] = chatId;
+        response["chat_id"] = QString::number(chatId);  // Преобразование в строку для передачи
+        qDebug() << "Existing chatId:" << chatId;  // Доп. лог для отладки
         clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
         clientSocket->flush();
         return;
@@ -604,6 +605,7 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
         response["type"] = "get_or_create_chat";
         response["status"] = "error";
         response["message"] = "Failed to create chat.";
+        qCritical() << "Failed to create chat:" << query.lastError().text();
         clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
         clientSocket->flush();
         return;
@@ -611,10 +613,11 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
 
     // Получаем ID нового чата
     int chatId = query.lastInsertId().toInt();
+    qDebug() << "New chatId created:" << chatId;
 
     // Вставляем участников в таблицу chat_participants для обоих логинов
     query.prepare("INSERT INTO chat_participants (chat_id, user_id) "
-                  "SELECT :chatId, user_id FROM user_auth WHERE login IN (:login1, :login2)");
+                  "SELECT :chatId, user_id FROM user_auth WHERE login = :login1 OR login = :login2");
     query.bindValue(":chatId", chatId);
     query.bindValue(":login1", login1);
     query.bindValue(":login2", login2);
@@ -623,6 +626,7 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
         response["type"] = "get_or_create_chat";
         response["status"] = "error";
         response["message"] = "Failed to add users to chat.";
+        qCritical() << "Failed to add users to chat:" << query.lastError().text();
         clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
         clientSocket->flush();
         return;
@@ -632,9 +636,12 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
     QJsonObject response;
     response["type"] = "get_or_create_chat";
     response["status"] = "success";
-    response["chat_id"] = chatId;
+    response["chat_id"] = QString::number(chatId);  // Преобразование в строку
     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
     clientSocket->flush();
 }
+
+
+
 
 
