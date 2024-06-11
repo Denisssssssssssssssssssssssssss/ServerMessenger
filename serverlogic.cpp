@@ -577,7 +577,7 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
     QString login1 = json["login1"].toString();
     QString login2 = json["login2"].toString();
     QString chatName1 = login1 + login2;
-    QString chatName2 = login2 + login1;
+    QString chatName2 = login2 + login1; // Вариант, когда промежуточный chatName другой
     QSqlQuery query(database);
 
     // Проверяем, существует ли уже такой чат
@@ -591,7 +591,6 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
         response["type"] = "get_or_create_chat";
         response["status"] = "success";
         response["chat_id"] = chatId;
-        response["user"] = login2; // Никнейм второго пользователя
         clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
         clientSocket->flush();
         return;
@@ -613,27 +612,17 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
     // Получаем ID нового чата
     int chatId = query.lastInsertId().toInt();
 
-    // Вставляем участников в таблицу chat_participants
+    // Вставляем участников в таблицу chat_participants для обоих логинов
     query.prepare("INSERT INTO chat_participants (chat_id, user_id) "
-                  "SELECT :chatId, user_id FROM user_auth WHERE login = :userLogin");
+                  "SELECT :chatId, user_id FROM user_auth WHERE login IN (:login1, :login2)");
     query.bindValue(":chatId", chatId);
-    query.bindValue(":userLogin", login1);
+    query.bindValue(":login1", login1);
+    query.bindValue(":login2", login2);
     if (!query.exec()) {
         QJsonObject response;
         response["type"] = "get_or_create_chat";
         response["status"] = "error";
-        response["message"] = "Failed to add user1 to chat.";
-        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
-        clientSocket->flush();
-        return;
-    }
-    query.bindValue(":chatId", chatId);
-    query.bindValue(":userLogin", login2);
-    if (!query.exec()) {
-        QJsonObject response;
-        response["type"] = "get_or_create_chat";
-        response["status"] = "error";
-        response["message"] = "Failed to add user2 to chat.";
+        response["message"] = "Failed to add users to chat.";
         clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
         clientSocket->flush();
         return;
@@ -644,8 +633,8 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
     response["type"] = "get_or_create_chat";
     response["status"] = "success";
     response["chat_id"] = chatId;
-    response["user"] = login2; // Никнейм второго пользователя
     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
     clientSocket->flush();
 }
+
 
