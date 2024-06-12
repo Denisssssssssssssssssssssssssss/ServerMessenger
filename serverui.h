@@ -36,6 +36,9 @@ private:
     void selectLogFile();
     void makeLogFileDefault();
 
+private slots:
+    void openLogFileDirectory(const QString &link);
+
 protected:
     void closeEvent(QCloseEvent *event) override;
 
@@ -45,7 +48,5 @@ public:
 signals:
     void serverCloseRequested();
 
-private slots:
-    void openLogFileDirectory(const QString &link);
 };
 #endif // SERVERUI_H

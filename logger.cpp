@@ -58,6 +58,7 @@ void Logger::saveDefaultLogPath(const QString &path)
      settings.sync();
 }
 
+//Получить путь к файлу логов по умолчанию
 QString Logger::getDefaultLogPath()
 {
     QSettings settings(QDir::homePath() + "/appsettings.ini", QSettings::IniFormat);

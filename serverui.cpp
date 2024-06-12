@@ -19,8 +19,8 @@ void ServerUI::setupUI()
 {
     setWindowIcon(QIcon(":/images/logo.png"));
     resize(window_width, window_height);
-    QWidget *centralWidget = new QWidget(this); // Создаем центральный виджет
-    layout = new QVBoxLayout(centralWidget); // Устанавливаем макет для центрального виджета
+    QWidget *centralWidget = new QWidget(this);
+    layout = new QVBoxLayout(centralWidget);
     currentLogFilePath = Logger::getInstance()->getDefaultLogPath();
     logFileNameLabel = new QLabel(tr("<a href=\"%1\" style=\"color:#1E90FF;\">Файл логов: %2</a>").arg(currentLogFilePath)
                                       .arg(QFileInfo(currentLogFilePath).fileName()));
@@ -40,7 +40,7 @@ void ServerUI::setupUI()
     layout->addWidget(logViewer);
     layout->addWidget(logFileButton);
     layout->addWidget(setDefaultLogFileButton);
-    setCentralWidget(centralWidget); // Устанавливаем центральный виджет в QMainWindow
+    setCentralWidget(centralWidget);
     this->setWindowTitle("Сервер");
     logUpdateTimer = new QTimer(this);
     logUpdateTimer = new QTimer(this);
