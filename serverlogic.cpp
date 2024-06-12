@@ -459,6 +459,7 @@ void ServerLogic::handleCreateChat(QTcpSocket* clientSocket, const QJsonObject &
     response["type"] = "create_chat";
     response["status"] = "success";
     response["chat_id"] = chatId;
+    Logger::getInstance()->logToFile(QString("Chat successfully created and users added to chat ID: %1").arg(chatId));
     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
     clientSocket->flush();
 }
@@ -528,7 +529,8 @@ void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject 
     QJsonObject response;
     response["type"] = "send_message";
     response["status"] = "success";
-
+    Logger::getInstance()->logToFile(QString("Message sent in chat ID: %1 by user: %2 at %3")
+                                         .arg(chatId).arg(userId).arg(timestamp));
     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
     clientSocket->flush();
 }
