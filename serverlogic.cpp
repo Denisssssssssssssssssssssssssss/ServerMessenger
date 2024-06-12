@@ -491,7 +491,7 @@ void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject 
     query.bindValue(":login", login);
 
     if (!query.exec()) {
-        qDebug() << "Ошибка выполнения SQL запроса: " << query.lastError();
+        qCritical() << "Ошибка выполнения SQL запроса: " << query.lastError();
         QJsonObject response;
         response["status"] = "error";
         response["message"] = "Ошибка при получении списка чатов.";
@@ -514,7 +514,7 @@ void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject 
         unreadQuery.bindValue(":login", login);
 
         if (!unreadQuery.exec() || !unreadQuery.next()) {
-            qDebug() << "Ошибка выполнения SQL запроса для непрочитанных сообщений: " << unreadQuery.lastError();
+            qCritical() << "Ошибка выполнения SQL запроса для непрочитанных сообщений: " << unreadQuery.lastError();
             continue;
         }
 
@@ -535,33 +535,6 @@ void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject 
     clientSocket->flush();
 }
 
-/*void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject &json)
-{
-    QString chatId = json["chat_id"].toString();
-    QString userId = json["user_id"].toString();
-    QString messageText = json["message_text"].toString();
-    QString timestamp = json["timestamp"].toString(); // Получаем временную метку
-
-    QSqlQuery query(database);
-    query.prepare("INSERT INTO messages (chat_id, user_id, message_text, timestamp_sent) "
-                  "VALUES (:chatId, (SELECT user_id FROM user_auth WHERE login = :userId), :messageText, :timestamp)");
-    query.bindValue(":chatId", chatId);
-    query.bindValue(":userId", userId);
-    query.bindValue(":messageText", messageText);
-    query.bindValue(":timestamp", timestamp); // Привязываем временную метку
-
-    if (!query.exec()) {
-        qDebug() << "Ошибка добавления сообщения: " << query.lastError();
-    }
-
-    QJsonObject response;
-    response["type"] = "send_message";
-    response["status"] = "success";
-    Logger::getInstance()->logToFile(QString("Message sent in chat ID: %1 by user: %2 at %3")
-                                         .arg(chatId).arg(userId).arg(timestamp));
-    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
-    clientSocket->flush();
-}*/
 
 void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject &json)
 {
@@ -615,8 +588,10 @@ void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject 
 
     if (participantQuery.exec() && participantQuery.next()) {
         int otherUserId = participantQuery.value("user_id").toInt();
+        qDebug() << "Other user id: " << otherUserId;
         // Вернем уведомление второму пользователю, если он онлайн
         if (userSockets.contains(otherUserId)) {
+            qDebug() << "Other user socket: " << userSockets[otherUserId];
             QTcpSocket *otherUserSocket = userSockets[otherUserId];
             QJsonObject notification;
             notification["type"] = "chat_update";
