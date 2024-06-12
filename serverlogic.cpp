@@ -286,7 +286,10 @@ void ServerLogic::onNewConnection()
                 {
                     handleGetOrCreateChat(clientSocket, json);
                 }
-
+                else if (json.contains("type") && json["type"].toString() == "delete_chat" && json.contains("chat_id"))
+                {
+                    handleDeleteChat(clientSocket, json);
+                }
             });
 }
 
@@ -763,6 +766,69 @@ void ServerLogic::markMessagesAsRead(int chatId, int userId)
             Logger::getInstance()->logToFile(QString("Marked message ID: %1 as read in chat ID: %2 for user ID: %3").arg(messageId).arg(chatId).arg(userId));
         }
     }
+}
+
+void ServerLogic::handleDeleteChat(QTcpSocket* clientSocket, const QJsonObject &json)
+{
+    if (!json.contains("chat_id")) {
+        qCritical() << "Invalid delete chat request: missing chat_id";
+        QJsonObject response;
+        response["type"] = "error";
+        response["message"] = "Missing chat_id";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    // Извлекаем chat_id как строку
+    QString chatIdStr = json["chat_id"].toString();
+    if (chatIdStr.isEmpty()) {
+        qCritical() << "Invalid delete chat request: empty chat_id string";
+        QJsonObject response;
+        response["type"] = "error";
+        response["message"] = "Invalid chat_id";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    // Преобразуем строку в целое число
+    bool ok;
+    int chatId = chatIdStr.toInt(&ok);
+    if (!ok) {
+        qCritical() << "Invalid delete chat request: chat_id is not a valid integer";
+        QJsonObject response;
+        response["type"] = "error";
+        response["message"] = "Invalid chat_id";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    qDebug() << "Deleting chat with ID:" << chatId;
+
+    // Удаление чата из базы данных
+    QSqlQuery query(database);
+    query.prepare("DELETE FROM chats WHERE chat_id = :chatId");
+    query.bindValue(":chatId", chatId);
+
+    if (!query.exec()) {
+        qCritical() << "Error deleting chat: " << query.lastError();
+        QJsonObject response;
+        response["type"] = "error";
+        response["message"] = "Failed to delete chat";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    QJsonObject response;
+    response["type"] = "success";
+    response["message"] = "Chat deleted successfully";
+    clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+    clientSocket->flush();
+
+    Logger::getInstance()->logToFile(QString("Chat ID: %1 deleted successfully").arg(chatId));
 }
 
 

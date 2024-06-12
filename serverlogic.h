@@ -26,6 +26,8 @@ private:
     void handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObject &json);
     void handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObject &json);
     void markMessagesAsRead(int chatId, int userId);
+    void handleDeleteChat(QTcpSocket* clientSocket, const QJsonObject &json);
+
 
 private slots:
     void onNewConnection();
