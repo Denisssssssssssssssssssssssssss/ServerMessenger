@@ -107,6 +107,16 @@ void ServerLogic::onNewConnection()
                             // Пароли совпадают, успешный вход
                             clientSocket->write("{\"status\":\"success\",\"message\":\"Logged in successfully\"}");
                             Logger::getInstance()->logToFile(QString("User '%1' logged in successfully.").arg(login));
+                            QSqlQuery userIdQuery(database);
+                            userIdQuery.prepare("SELECT user_id FROM user_auth WHERE login = :login");
+                            userIdQuery.bindValue(":login", login);
+                            if (userIdQuery.exec() && userIdQuery.next())
+                            {
+                                int userId = userIdQuery.value("user_id").toInt();
+                                userSockets.insert(userId, clientSocket);
+                                qDebug() << "user_id = " << userId;
+                                Logger::getInstance()->logToFile(QString("User '%1' with ID '%2' added to userSockets.").arg(login).arg(userId));
+                            }
                         }
                         else
                         {
