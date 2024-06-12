@@ -548,7 +548,28 @@ void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject 
 
 void ServerLogic::handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObject &json)
 {
-    QString chatId = json["chat_id"].toString();
+    if (!json.contains("chat_id") || !json.contains("login")) {
+        qCritical() << "Invalid request: missing chat_id or login";
+        return;
+    }
+
+    QString chatIdStr = json["chat_id"].toString();
+    QString login = json["login"].toString();
+    int chatId = chatIdStr.toInt();
+
+    // Получаем user_id по login
+    QSqlQuery userIdQuery(database);
+    userIdQuery.prepare("SELECT user_id FROM user_auth WHERE login = :login");
+    userIdQuery.bindValue(":login", login);
+
+    if (!userIdQuery.exec() || !userIdQuery.next()) {
+        qCritical() << "Failed to fetch user_id for login:" << login;
+        return;
+    }
+    int userId = userIdQuery.value("user_id").toInt();
+
+    qDebug() << "User ID from handleGetChatHistory: " << userId;
+    qDebug() << "Chat ID from handleGetChatHistory: " << chatId;
 
     QSqlQuery query(database);
     query.prepare("SELECT ua.login AS user_id, m.message_text, m.timestamp_sent AS timestamp "
@@ -559,23 +580,26 @@ void ServerLogic::handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObje
     query.bindValue(":chatId", chatId);
 
     if (!query.exec()) {
-        qDebug() << "Ошибка получения истории сообщений: " << query.lastError();
+        qCritical() << "Error fetching chat history:" << query.lastError();
         return;
     }
 
     QJsonArray messagesArray;
     while (query.next()) {
-        QString userId = query.value("user_id").toString();
+        QString messageUserId = query.value("user_id").toString();
         QString messageText = query.value("message_text").toString();
         QString timestamp = query.value("timestamp").toString();
 
         QJsonObject messageObj;
-        messageObj["user_id"] = userId;
+        messageObj["user_id"] = messageUserId;
         messageObj["message_text"] = messageText;
         messageObj["timestamp"] = timestamp;
 
         messagesArray.append(messageObj);
     }
+
+    // Отметить сообщения как прочитанные
+    markMessagesAsRead(chatId, userId); // Вызываем функцию
 
     QJsonObject response;
     response["type"] = "get_chat_history";
@@ -583,6 +607,8 @@ void ServerLogic::handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObje
     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
     clientSocket->flush();
 }
+
+
 
 void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObject &json)
 {
@@ -652,6 +678,35 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
     clientSocket->flush();
 }
+
+void ServerLogic::markMessagesAsRead(int chatId, int userId)
+{
+    QSqlQuery selectQuery(database);
+    selectQuery.prepare("SELECT message_id FROM messages WHERE chat_id = :chatId AND user_id != :userId");
+    selectQuery.bindValue(":chatId", chatId);
+    selectQuery.bindValue(":userId", userId);
+
+    if (!selectQuery.exec()) {
+        qCritical() << "Error fetching message IDs to mark as read:" << selectQuery.lastError().text();
+        return;
+    }
+
+    QSqlQuery insertQuery(database);
+    while (selectQuery.next()) {
+        int messageId = selectQuery.value("message_id").toInt();
+        insertQuery.prepare("INSERT OR IGNORE INTO message_read_status (message_id, user_id, timestamp_read) "
+                            "VALUES (:messageId, :userId, CURRENT_TIMESTAMP)");
+        insertQuery.bindValue(":messageId", messageId);
+        insertQuery.bindValue(":userId", userId);
+
+        if (!insertQuery.exec()) {
+            qCritical() << "Error marking message as read:" << insertQuery.lastError().text();
+        } else {
+            Logger::getInstance()->logToFile(QString("Marked message ID: %1 as read in chat ID: %2 for user ID: %3").arg(messageId).arg(chatId).arg(userId));
+        }
+    }
+}
+
 
 
 
