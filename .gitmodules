@@ -1,0 +1,9 @@
+[submodule "Qt-Secret"]
+	path = Qt-Secret
+	url = https://github.com/QuasarApp/Qt-Secret.git
+[submodule "QtBigInt"]
+	path = QtBigInt
+	url = https://github.com/QuasarApp/QtBigInt.git
+[submodule "qca"]
+	path = qca
+	url = https://github.com/KDE/qca

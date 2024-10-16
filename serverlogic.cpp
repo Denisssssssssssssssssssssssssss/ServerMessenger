@@ -1,5 +1,5 @@
 #include "serverlogic.h"
-
+#include <qrsaencryption.h>
 #include <QSqlQuery>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -8,13 +8,16 @@
 #include <QRegularExpression>
 #include <QJsonArray>
 #include <QCryptographicHash>
-
+#include <QSslSocket>
+#include <QSsl>
+#include <QSslError>
+#include <string>
 
 ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
 {
     connect(this, &ServerLogic::newConnection, this, &ServerLogic::onNewConnection);
     database = QSqlDatabase::addDatabase("QSQLITE");
-    database.setDatabaseName(QDir::homePath() + "/MessengerData.db");
+    database.setDatabaseName(QDir::homePath() + "/MESDB.db");
     if (!database.open())
     {
         qCritical() << "Could not connect to database:" << database.lastError().text();
@@ -22,7 +25,6 @@ ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
     }
     Logger::getInstance()->logToFile("Server is running");
 }
-
 //Обработка подключений и запросов от клиентов
 void ServerLogic::onNewConnection()
 {
@@ -92,6 +94,9 @@ void ServerLogic::onNewConnection()
                 {
                     QString login = json["login"].toString();
                     QString hashedPassword = json["password"].toString();
+
+                    qDebug()<< login;
+                    qDebug() << hashedPassword;
 
                     QSqlQuery query(database);
                     query.prepare("SELECT password FROM user_auth WHERE login = :login");
@@ -218,9 +223,9 @@ void ServerLogic::onNewConnection()
                         QString dbHashedPassword = query.value(0).toString();
 
                         //Если пароли совпадают
-                        if (getSha256Hash(clientPassword, oldLogin) == dbHashedPassword) {
+                        if (getSha512Hash(clientPassword, oldLogin) == dbHashedPassword) {
                             //Зашифровываем пароль с использованием нового логина как соли
-                            QString newHashedPassword = getSha256Hash(clientPassword, newLogin);
+                            QString newHashedPassword = getSha512Hash(clientPassword, newLogin);
 
                             //Обновляем данные пользователя в БД
                             query.prepare("UPDATE user_auth SET login = :newLogin, password = :newHashedPassword WHERE login = :oldLogin");
@@ -313,6 +318,66 @@ void ServerLogic::onNewConnection()
                 {
                     handleDeleteChat(clientSocket, json);
                 }
+                else if (json.contains("type") && json["type"].toString() == "check_chat_exists" && json.contains("chat_name"))
+                {
+                    QString chatName = json["chat_name"].toString();
+                    QSqlQuery query(database);
+
+                    // Проверяем, существует ли уже такой чат
+                    query.prepare("SELECT chat_id FROM chats WHERE chat_name = :chatName");
+                    query.bindValue(":chatName", chatName);
+                    if (query.exec() && query.next()) {
+                        // Чат существует
+                        QJsonObject response;
+                        response["type"] = "check_chat_exists";
+                        response["status"] = "error";
+                        response["message"] = "Chat name already exists.";
+                        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+                        clientSocket->flush();
+                    } else {
+                        // Чат не существует, создаем новый чат
+                        query.prepare("INSERT INTO chats (chat_name, chat_type) VALUES (:chatName, 'group')");
+                        query.bindValue(":chatName", chatName);
+
+                        if (query.exec()) {
+                            // Успешно создан новый чат, возвращаем ID нового чата
+                            int chatId = query.lastInsertId().toInt();
+                            QJsonObject response;
+                            response["type"] = "check_chat_exists";
+                            response["status"] = "success";
+                            response["chat_id"] = chatId; // Отправляем ID новой группы
+                            clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+
+                            // Добавляем пользователя в только что созданный чат
+                            QString login = json["login"].toString(); // Получаем логин пользователя из запроса
+                            query.prepare("INSERT INTO chat_participants (chat_id, user_id) "
+                                          "SELECT :chatId, user_id FROM user_auth WHERE login = :login");
+                            query.bindValue(":chatId", chatId);
+                            query.bindValue(":login", login);
+
+                            if (!query.exec()) {
+                                // Ошибка при добавлении пользователя в чат
+                                QJsonObject errorResponse;
+                                errorResponse["type"] = "get_or_create_chat";
+                                errorResponse["status"] = "error";
+                                errorResponse["message"] = "Failed to add user to chat.";
+                                qCritical() << "Failed to add user to chat:" << query.lastError().text();
+                                clientSocket->write(QJsonDocument(errorResponse).toJson(QJsonDocument::Compact));
+                                clientSocket->flush();
+                            }
+                        } else {
+                            // Ошибка при создании чата
+                            QJsonObject response;
+                            response["type"] = "check_chat_exists";
+                            response["status"] = "error";
+                            response["message"] = "Failed to create chat.";
+                            clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+                        }
+                        clientSocket->flush();
+                    }
+                }
+
+
             });
 }
 
@@ -391,10 +456,10 @@ bool ServerLogic::loginAvailable(const QString& login)
 }
 
 //Шифрование пароля
-QString ServerLogic::getSha256Hash(const QString &str, const QString &salt)
+QString ServerLogic::getSha512Hash(const QString &str, const QString &salt)
 {
     QByteArray byteArrayPasswordSalt = (str + salt).toUtf8();
-    QByteArray hashedPassword = QCryptographicHash::hash(byteArrayPasswordSalt, QCryptographicHash::Sha256).toHex();
+    QByteArray hashedPassword = QCryptographicHash::hash(byteArrayPasswordSalt, QCryptographicHash::Sha512).toHex();
     return hashedPassword;
 }
 
@@ -513,14 +578,15 @@ void ServerLogic::handleCreateChat(QTcpSocket* clientSocket, const QJsonObject &
     clientSocket->flush();
 }
 
-//Обработка запроса на получение списка чатов
+// Обработка запроса на получение списка чатов
 void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject &json)
 {
     QString login = json["login"].toString();
 
-    QSqlQuery query(database);
-    query.prepare(
-        "SELECT c.chat_id, u2.nickname AS other_nickname "
+    // Получение персональных чатов
+    QSqlQuery personalQuery(database);
+    personalQuery.prepare(
+        "SELECT c.chat_id, u2.nickname AS other_nickname, c.chat_type "
         "FROM chats c "
         "JOIN chat_participants cp1 ON c.chat_id = cp1.chat_id "
         "JOIN user_auth u1 ON cp1.user_id = u1.user_id "
@@ -528,30 +594,33 @@ void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject 
         "JOIN user_auth u2 ON cp2.user_id = u2.user_id "
         "WHERE u1.login = :login AND c.chat_type = 'personal'"
         );
-    query.bindValue(":login", login);
+    personalQuery.bindValue(":login", login);
 
-    if (!query.exec())
+    if (!personalQuery.exec())
     {
-        qCritical() << "Ошибка выполнения SQL запроса: " << query.lastError();
+        qCritical() << "Ошибка выполнения SQL запроса для персональных чатов: " << personalQuery.lastError();
         QJsonObject response;
         response["status"] = "error";
-        response["message"] = "Ошибка при получении списка чатов.";
+        response["message"] = "Ошибка при получении списка персональных чатов.";
         clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
         clientSocket->flush();
         return;
     }
 
     QJsonArray chatsArray;
-    while (query.next())
-    {
-        int chatId = query.value("chat_id").toInt();
-        QString otherNickname = query.value("other_nickname").toString();
 
-        //Проверяем количество непрочитанных сообщений
+    // Обработка результатов для персональных чатов
+    while (personalQuery.next())
+    {
+        int chatId = personalQuery.value("chat_id").toInt();
+        QString otherNickname = personalQuery.value("other_nickname").toString();
+        QString chatType = personalQuery.value("chat_type").toString(); // Получаем тип чата
+
+        // Проверяем количество непрочитанных сообщений
         QSqlQuery unreadQuery(database);
         unreadQuery.prepare("SELECT COUNT(*) FROM messages m "
-            "LEFT JOIN message_read_status mrs ON m.message_id = mrs.message_id "
-            "WHERE m.chat_id = :chatId AND m.user_id != (SELECT user_id FROM user_auth WHERE login = :login) AND mrs.timestamp_read IS NULL");
+                            "LEFT JOIN message_read_status mrs ON m.message_id = mrs.message_id "
+                            "WHERE m.chat_id = :chatId AND m.user_id != (SELECT user_id FROM user_auth WHERE login = :login) AND mrs.timestamp_read IS NULL");
         unreadQuery.bindValue(":chatId", chatId);
         unreadQuery.bindValue(":login", login);
 
@@ -566,14 +635,72 @@ void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject 
         QJsonObject chatObj;
         chatObj["chat_id"] = chatId;
         chatObj["other_nickname"] = otherNickname;
-        chatObj["unread_count"] = unreadCount; //Добавляем информацию о непрочитанных сообщениях
+        chatObj["unread_count"] = unreadCount; // Добавляем информацию о непрочитанных сообщениях
+        chatObj["chat_type"] = chatType; // Добавляем тип чата
 
         chatsArray.append(chatObj);
     }
 
+    // Получение групповых чатов
+    QSqlQuery groupQuery(database);
+    groupQuery.prepare(
+        "SELECT c.chat_id, c.chat_name AS other_nickname, c.chat_type "
+        "FROM chats c "
+        "JOIN chat_participants cp ON c.chat_id = cp.chat_id "
+        "JOIN user_auth u ON cp.user_id = u.user_id "
+        "WHERE u.login = :login AND c.chat_type = 'group'"
+        );
+    groupQuery.bindValue(":login", login);
+
+    if (!groupQuery.exec())
+    {
+        qCritical() << "Ошибка выполнения SQL запроса для групповых чатов: " << groupQuery.lastError();
+        QJsonObject response;
+        response["status"] = "error";
+        response["message"] = "Ошибка при получении списка групповых чатов.";
+        clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
+        clientSocket->flush();
+        return;
+    }
+
+    // Обработка результатов для групповых чатов
+    while (groupQuery.next())
+    {
+        int chatId = groupQuery.value("chat_id").toInt();
+        QString otherNickname = groupQuery.value("other_nickname").toString();
+        QString chatType = groupQuery.value("chat_type").toString(); // Получаем тип чата
+
+        // Проверяем количество непрочитанных сообщений
+        QSqlQuery unreadQuery(database);
+        unreadQuery.prepare("SELECT COUNT(*) FROM messages m "
+                            "LEFT JOIN message_read_status mrs ON m.message_id = mrs.message_id "
+                            "WHERE m.chat_id = :chatId AND m.user_id != (SELECT user_id FROM user_auth WHERE login = :login) AND mrs.timestamp_read IS NULL");
+
+        unreadQuery.bindValue(":chatId", chatId);
+        unreadQuery.bindValue(":login", login);
+
+        if (!unreadQuery.exec() || !unreadQuery.next())
+        {
+            qCritical() << "Ошибка выполнения SQL запроса для непрочитанных сообщений: " << unreadQuery.lastError();
+            continue;
+        }
+
+        int unreadCount = unreadQuery.value(0).toInt();
+
+        QJsonObject chatObj;
+        chatObj["chat_id"] = chatId;
+        chatObj["other_nickname"] = otherNickname;
+        chatObj["unread_count"] = unreadCount; // Добавляем информацию о непрочитанных сообщениях
+        chatObj["chat_type"] = chatType; // Добавляем тип чата
+
+        chatsArray.append(chatObj);
+    }
+
+    // Формируем ответ с полным списком чатов
     QJsonObject response;
     response["status"] = "success";
     response["chats"] = chatsArray;
+
     clientSocket->write(QJsonDocument(response).toJson(QJsonDocument::Compact));
     clientSocket->flush();
 }

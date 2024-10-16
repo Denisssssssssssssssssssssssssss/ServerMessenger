@@ -37,9 +37,9 @@ void ServerUI::setupUI()
     headerLayout->addStretch();
     headerLayout->addWidget(statusLabel);
     layout->addLayout(headerLayout);
-    layout->addWidget(logViewer);
     layout->addWidget(logFileButton);
     layout->addWidget(setDefaultLogFileButton);
+    layout->addWidget(logViewer);
     setCentralWidget(centralWidget);
     this->setWindowTitle("Сервер");
     logUpdateTimer = new QTimer(this);
@@ -48,6 +48,8 @@ void ServerUI::setupUI()
 }
 
 //Обновление окна с логами
+
+
 void ServerUI::updateLogViewer()
 {
     QFile logFile(currentLogFilePath);

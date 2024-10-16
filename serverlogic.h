@@ -1,13 +1,12 @@
 #ifndef SERVERLOGIC_H
 #define SERVERLOGIC_H
-
 #include "logger.h"
-
 #include <QTcpServer>
 #include <QDir>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QTcpSocket>
+#include <qrsaencryption.h>
 
 class ServerLogic : public QTcpServer
 {
@@ -20,13 +19,14 @@ private:
     bool passwordContainsRequiredCharacters(const QString &password);
     bool loginContainsOnlyAllowedCharacters(const QString &login);
     bool loginAvailable(const QString& login);
-    QString getSha256Hash(const QString &str, const QString &salt);
+    QString getSha512Hash(const QString &str, const QString &salt);
     void handleGetChatList(QTcpSocket* clientSocket, const QJsonObject &json);
     void handleSendMessage(QTcpSocket* clientSocket, const QJsonObject &json);
     void handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObject &json);
     void handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObject &json);
     void markMessagesAsRead(int chatId, int userId);
     void handleDeleteChat(QTcpSocket* clientSocket, const QJsonObject &json);
+    void generateRSAKeys();
 
 
 private slots:
