@@ -13,6 +13,15 @@
 #include <QSslError>
 #include <string>
 
+/**
+ * @brief Конструктор класса ServerLogic.
+ *
+ * Инициализирует сервер, устанавливает соединение с базой данных и
+ * настраивает логгирование сервера.
+ *
+ * @param parent Указатель на родительский объект (по умолчанию nullptr).
+ */
+
 ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
 {
     connect(this, &ServerLogic::newConnection, this, &ServerLogic::onNewConnection);
@@ -25,7 +34,12 @@ ServerLogic::ServerLogic(QObject *parent) : QTcpServer(parent)
     }
     Logger::getInstance()->logToFile("Server is running");
 }
-//Обработка подключений и запросов от клиентов
+/**
+ * @brief Обрабатывает новое соединение от клиента.
+ *
+ * Устанавливает связь с сокетом клиента и обрабатывает входящие
+ * данные, проверяя тип запроса (регистрация, вход, обновление данных и др.).
+ */
 void ServerLogic::onNewConnection()
 {
     QTcpSocket *clientSocket = this->nextPendingConnection();
@@ -382,7 +396,11 @@ void ServerLogic::onNewConnection()
 }
 
 
-//Запуск сервера на определенном порте
+/**
+ * @brief Запускает сервер на определенном порте.
+ *
+ * @param port Порт, на котором будет запущен сервер.
+ */
 void ServerLogic::startServer(int port)
 {
     if (!this->listen(QHostAddress::Any, port))
@@ -395,7 +413,11 @@ void ServerLogic::startServer(int port)
     }
 }
 
-//Выключение сервера
+/**
+ * @brief Отключает сервер и всех подключенных клиентов.
+ *
+ * Закрывает соединение с базой данных и очищает список подключенных клиентов.
+ */
 void ServerLogic::shutdownServer()
 {
     this->close();
@@ -419,7 +441,13 @@ void ServerLogic::shutdownServer()
     }
 }
 
-//Проверка пароля
+/**
+ * @brief Проверяет, содержит ли пароль необходимые символы.
+ *
+ * @param password Пароль для проверки.
+ * @return true Если пароль содержит хотя бы один символ каждого типа.
+ * @return false В противном случае.
+ */
 bool ServerLogic::passwordContainsRequiredCharacters(const QString &password)
 {
     QRegularExpression upperCaseRegExp("[A-Z]"); //Регулярное выражение для заглавных букв
@@ -433,14 +461,26 @@ bool ServerLogic::passwordContainsRequiredCharacters(const QString &password)
            password.contains(specialRegExp);
 }
 
-//Проверка логина
+/**
+ * @brief Проверяет, содержит ли логин только допустимые символы.
+ *
+ * @param login Логин для проверки.
+ * @return true Если логин содержит только допустимые символы.
+ * @return false В противном случае.
+ */
 bool ServerLogic::loginContainsOnlyAllowedCharacters(const QString &login)
 {
     QRegularExpression loginRegExp("^[A-Za-z\\d_-]+$"); //Регулярное выражение для допустимых символов в логине
     return login.contains(loginRegExp);
 }
 
-//Проверка доступности логина при регистрации
+/**
+ * @brief Проверяет доступность логина при регистрации.
+ *
+ * @param login Логин для проверки.
+ * @return true Если логин доступен.
+ * @return false Если логин занят.
+ */
 bool ServerLogic::loginAvailable(const QString& login)
 {
     QSqlQuery query(database);
@@ -455,7 +495,13 @@ bool ServerLogic::loginAvailable(const QString& login)
     return false; //Логин занят
 }
 
-//Шифрование пароля
+/**
+ * @brief Шифрует строку с использованием SHA-512 и соли.
+ *
+ * @param str Строка для шифрования.
+ * @param salt Соль для шифрования.
+ * @return QString Хешированная строка.
+ */
 QString ServerLogic::getSha512Hash(const QString &str, const QString &salt)
 {
     QByteArray byteArrayPasswordSalt = (str + salt).toUtf8();
@@ -463,7 +509,12 @@ QString ServerLogic::getSha512Hash(const QString &str, const QString &salt)
     return hashedPassword;
 }
 
-//Обработка запроса по поиску пользователей
+/**
+ * @brief Обрабатывает запрос на поиск пользователей.
+ *
+ * @param clientSocket Указатель на сокет клиента.
+ * @param json JSON-объект с данными запроса.
+ */
 void ServerLogic::handleFindUsers(QTcpSocket* clientSocket, const QJsonObject &json)
 {
     QString searchText = json["searchText"].toString();
@@ -500,7 +551,12 @@ void ServerLogic::handleFindUsers(QTcpSocket* clientSocket, const QJsonObject &j
     clientSocket->flush();
 }
 
-//Обработка запроса на создание чата
+/**
+ * @brief Обрабатывает запрос на создание чата.
+ *
+ * @param clientSocket Указатель на сокет клиента.
+ * @param json JSON-объект с данными запроса.
+ */
 void ServerLogic::handleCreateChat(QTcpSocket* clientSocket, const QJsonObject &json)
 {
     QString user1 = json["user1"].toString();
@@ -578,7 +634,12 @@ void ServerLogic::handleCreateChat(QTcpSocket* clientSocket, const QJsonObject &
     clientSocket->flush();
 }
 
-// Обработка запроса на получение списка чатов
+/**
+ * @brief Обрабатывает запрос на получение списка чатов.
+ *
+ * @param clientSocket Указатель на сокет клиента.
+ * @param json JSON-объект с данными запроса.
+ */
 void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject &json)
 {
     QString login = json["login"].toString();
@@ -705,7 +766,12 @@ void ServerLogic::handleGetChatList(QTcpSocket* clientSocket, const QJsonObject 
     clientSocket->flush();
 }
 
-//Обработка запроса на отправку сообщения
+/**
+ * @brief Обрабатывает запрос на отправку сообщения.
+ *
+ * @param clientSocket Указатель на сокет клиента.
+ * @param json JSON-объект с данными сообщения.
+ */
 void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject &json)
 {
     QString chatIdStr = json["chat_id"].toString();
@@ -779,7 +845,12 @@ void ServerLogic::handleSendMessage(QTcpSocket* clientSocket, const QJsonObject 
     }
 }
 
-//Обработка запроса на получение истории чата
+/**
+ * @brief Обрабатывает запрос на получение истории чата.
+ *
+ * @param clientSocket Указатель на сокет клиента.
+ * @param json JSON-объект с данными запроса.
+ */
 void ServerLogic::handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObject &json)
 {
     if (!json.contains("chat_id") || !json.contains("login"))
@@ -846,7 +917,12 @@ void ServerLogic::handleGetChatHistory(QTcpSocket* clientSocket, const QJsonObje
     clientSocket->flush();
 }
 
-//Обработка запроса на открытие или создание чата
+/**
+ * @brief Обрабатывает запрос на открытие или создание чата.
+ *
+ * @param clientSocket Указатель на сокет клиента.
+ * @param json JSON-объект с данными запроса.
+ */
 void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObject &json)
 {
     QString login1 = json["login1"].toString();
@@ -919,7 +995,12 @@ void ServerLogic::handleGetOrCreateChat(QTcpSocket* clientSocket, const QJsonObj
     clientSocket->flush();
 }
 
-//Отметить сообщения как прочитанные
+/**
+ * @brief Отмечает сообщения как прочитанные.
+ *
+ * @param chatId Идентификатор чата.
+ * @param userId Идентификатор пользователя.
+ */
 void ServerLogic::markMessagesAsRead(int chatId, int userId)
 {
     QSqlQuery selectQuery(database);
@@ -954,7 +1035,12 @@ void ServerLogic::markMessagesAsRead(int chatId, int userId)
     }
 }
 
-//Обработка запроса на удаление чата
+/**
+ * @brief Обрабатывает запрос на удаление чата.
+ *
+ * @param clientSocket Указатель на сокет клиента.
+ * @param json JSON-объект с данными запроса.
+ */
 void ServerLogic::handleDeleteChat(QTcpSocket* clientSocket, const QJsonObject &json)
 {
     if (!json.contains("chat_id"))
